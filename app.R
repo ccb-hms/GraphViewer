@@ -1,4 +1,11 @@
-
+############################################################
+# 
+# author: Ludwig Geistlinger
+# date: 2021-08-02 08:22:40
+# 
+# descr: scaffold for simple graph viewer
+# 
+############################################################
 
 library(shiny)
 library(BioPlex)
