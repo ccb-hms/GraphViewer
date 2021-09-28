@@ -16,7 +16,7 @@ gr <- readRDS("ribo_graph.rds")
 gr <- BioNet::largestComp(gr)
 ig <- igraph::graph_from_graphnel(gr)
 
-# quick fix:
+# quick fix
 igraph::vertex_attr(ig, "ENTREZID") <- as.character(igraph::vertex_attr(ig, "ENTREZID"))
 
 .getNumericVertexAttributes <- function(ig)
@@ -58,7 +58,13 @@ buildUI <- function(ig)
             
             # TODO: support hover 
             mainPanel(
-                plotOutput("ggnplot", hover = hoverOpts(id = "plot_hover" ))
+                div(
+                    style = "position:relative",
+                    plotOutput("ggnplot", hover = hoverOpts(id = "plot_hover",
+                                                            delay = 100, 
+                                                            delayType = "debounce")),
+                    uiOutput("hover_info")
+                ),
             )
         )
     )
@@ -66,25 +72,51 @@ buildUI <- function(ig)
 }
 
 # Define server logic required to draw a histogram
-server <- function(input, output) {
-
+server <- function(input, output) 
+{
+    df <- ggnetwork(ig)
     output$ggnplot <- renderPlot({
-        # generate bins based on input$bins from ui.R
         ndata <- input$ndata
         edata <- input$edata
-
-        # draw the histogram with the specified number of bins
-        ggplot(ggnetwork(ig, ), 
+        ggplot(df, 
                aes(x = x, y = y, xend = xend, yend = yend)) +
             geom_nodes(aes_string(size = ndata)) +
+            geom_nodelabel_repel(aes(label = SYMBOL), box.padding = unit(1, "lines")) +
             geom_edges(aes_string(color = edata), 
                        arrow = arrow(length = unit(6, "pt"), type = "closed")) +
             theme_blank()
     })
     
-    output$plot_hoverinfo <- renderPrint({
-        cat("Hover (throttled):\n")
-        str(input$plot_hover)
+    output$hover_info <- renderUI({
+        hover <- input$plot_hover
+        point <- nearPoints(df, hover, threshold = 5, maxpoints = 1, addDist = TRUE)
+        if (nrow(point) == 0) return(NULL)
+        
+        # calculate point position INSIDE the image as percent of total dimensions
+        # from left (horizontal) and from top (vertical)
+        left_pct <- (hover$x - hover$domain$left) / (hover$domain$right - hover$domain$left)
+        top_pct <- (hover$domain$top - hover$y) / (hover$domain$top - hover$domain$bottom)
+        
+        # calculate distance from left and bottom side of the picture in pixels
+        left_px <- hover$range$left + left_pct * (hover$range$right - hover$range$left)
+        top_px <- hover$range$top + top_pct * (hover$range$bottom - hover$range$top)
+        
+        # create style property fot tooltip
+        # background color is set so tooltip is a bit transparent
+        # z-index is set so we are sure are tooltip will be on top
+        style <- paste0("position:absolute; z-index:100; background-color: rgba(245, 245, 245, 0.85); ",
+                        "left:", 10 , "px; top:", 300, "px;")
+        
+        # actual tooltip created as wellPanel
+        ndata <- input$ndata
+        nstr <- paste0(ndata, ":")
+        nstr <- paste("<b>", nstr, "</b>")
+        wellPanel(
+            style = style,
+            p(HTML(paste0("<b> Isoform: </b>", point$ISOFORM, "<br/>",
+                          "<b> Symbol: </b>", point$SYMBOL, "<br/>",
+                          nstr, signif(point[[ndata]], digits = 1))))
+        )
     })
 }
 
